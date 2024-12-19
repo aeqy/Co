@@ -1,4 +1,7 @@
+using Co.Domain.Entities;
 using Co.Infrastructure.Data;
+using Microsoft.AspNetCore.Identity;
+using OpenIddict.Abstractions;
 
 namespace Co.WebApi.Extensions;
 
@@ -6,6 +9,11 @@ public static class OpenIddictExtensions
 {
     public static IServiceCollection AddOpenIddictServer(this IServiceCollection services)
     {
+        services.AddIdentity<AppUser, IdentityRole<Guid>>()
+            .AddEntityFrameworkStores<CoDbContext>()
+            .AddDefaultTokenProviders();
+        
+        
         services.AddOpenIddict()
             .AddCore(options =>
             {
@@ -19,6 +27,8 @@ public static class OpenIddictExtensions
                     .AllowAuthorizationCodeFlow() // 启用 Authorization Code 授权流程
                     .RequireProofKeyForCodeExchange() // 强制 PKCE
                     .AllowRefreshTokenFlow() // 启用 Refresh Token 授权流程
+                    .AllowClientCredentialsFlow()   // 启用 Client Credentials 授权流程
+                    .AllowPasswordFlow() // 启用 Password 授权流程
                     .SetTokenEndpointUris("/connect/token") // 令牌端点
                     .SetAuthorizationEndpointUris("/connect/authorize") // 授权端点
 
@@ -30,6 +40,7 @@ public static class OpenIddictExtensions
                 options.UseAspNetCore()
                     .EnableTokenEndpointPassthrough()
                     .EnableAuthorizationEndpointPassthrough();
+                
             })
             .AddValidation(options =>
             {

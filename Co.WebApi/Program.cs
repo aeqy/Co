@@ -1,8 +1,8 @@
+using Co.Infrastructure.Data;
 using Co.WebApi.Extensions;
 using Co.WebApi.Middlewares;
 
 var builder = WebApplication.CreateBuilder(args);
-
 
 builder.Services.ConfigureServicesDatabase(builder.Configuration); // Configure Database
 
@@ -20,8 +20,11 @@ builder.Logging.AddConsole(); // Add Console Logging Provider
 
 builder.Services.AddApiServices(builder.Configuration); // Add Api Services
 
+builder.Services.AddScoped<SeedDataService>(); // Add Seed Data Service
 
 var app = builder.Build();
+
+await app.SeedDatabaseAsync();
 
 app.UseMiddleware<ExceptionHandlingMiddleware>(); // Add Exception Handling Middleware
 
