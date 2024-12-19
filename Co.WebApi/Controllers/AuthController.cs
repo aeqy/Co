@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Co.Domain.Entities;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using OpenIddict.Abstractions;
@@ -74,7 +75,7 @@ public class AuthController(UserManager<AppUser> userManager) : Controller
 
                 // TODO 这里关系着 能不能离线刷新
                 // 设置令牌范围 (Scopes)，指定客户端请求的权限
-                // principal.SetScopes(Profile, OfflineAccess, OpenId, Email);
+                principal.SetScopes(Profile, OfflineAccess, OpenId, Email);
 
                 // 使用 OpenIddict 的 SignIn 方法生成并返回访问令牌和刷新令牌
                 return SignIn(principal, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
@@ -111,6 +112,28 @@ public class AuthController(UserManager<AppUser> userManager) : Controller
         {
             Error = OpenIddictConstants.Errors.UnsupportedGrantType,
             ErrorDescription = "The specified grant type is not supported."
+        });
+    }
+    
+    [Authorize(AuthenticationSchemes = OpenIddictServerAspNetCoreDefaults.AuthenticationScheme)]
+    [HttpGet(template: "/connect/userinfo")]
+    // 该方法用于处理用户信息请求，返回当前用户的身份信息
+    public async Task<IActionResult> UserInfo()
+    {
+        // 验证当前用户的身份，确保用户已通过身份验证
+        var result = await HttpContext.AuthenticateAsync(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+        if (result.Principal == null)
+        {
+            // 用户未通过身份验证，返回 Unauthorized 错误
+            return Unauthorized();
+        }
+        
+        return Ok(new
+        {
+            // 返回当前用户的身份声明，包括用户名、唯一标识符等
+            sub = result.Principal.GetClaim(OpenIddictConstants.Claims.Subject),    // 返回当前用户的唯一标识符
+            name = result.Principal.GetClaim(OpenIddictConstants.Claims.Name) // 返回当前用户的用户名
+            
         });
     }
 }

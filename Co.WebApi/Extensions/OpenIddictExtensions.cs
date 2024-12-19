@@ -31,6 +31,10 @@ public static class OpenIddictExtensions
                     .AllowPasswordFlow() // 启用 Password 授权流程
                     .SetTokenEndpointUris("/connect/token") // 令牌端点
                     .SetAuthorizationEndpointUris("/connect/authorize") // 授权端点
+                    
+                    
+                    .SetUserInfoEndpointUris("/connect/userinfo")   // 用户信息端点
+                    
 
                     // 配置签名和加密凭证
                     .AddDevelopmentEncryptionCertificate()
