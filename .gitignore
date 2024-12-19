@@ -1,5 +1,5 @@
-MyCc.WebApi/appsettings.*.json
-MyCc.Infrastructure/Migrations
+Co.WebApi/appsettings.*.json
+Co.Infrastructure/Migrations
 
 # JetBrains Rider
 .idea/
