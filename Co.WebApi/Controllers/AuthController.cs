@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Co.Application.DTOs;
 using Co.Domain.Entities;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Authentication;
@@ -11,7 +12,7 @@ using static OpenIddict.Abstractions.OpenIddictConstants.Scopes;
 namespace Co.WebApi.Controllers;
 
 // 认证控制器，处理与 OpenID Connect 和 OAuth2 相关的令牌请求
-public class AuthController(UserManager<AppUser> userManager) : Controller
+public class AuthController(UserManager<AppUser> userManager, SignInManager<AppUser> signInManager) : Controller
 {
     // 通过构造函数注入 UserManager<AppUser> 用于管理用户身份
     // UserManager 用于用户的查找和密码验证等操作
@@ -135,5 +136,70 @@ public class AuthController(UserManager<AppUser> userManager) : Controller
             name = result.Principal.GetClaim(OpenIddictConstants.Claims.Name) // 返回当前用户的用户名
             
         });
+    }
+    
+    // 用户注册
+    [HttpPost("register")]
+    public async Task<IActionResult> Register([FromBody] RegisterDto model)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var user = new AppUser { UserName = model.UserName, Email = model.Email };
+        var result = await userManager.CreateAsync(user, model.Password);
+
+        if (result.Succeeded)
+        {
+            // 可以在此处分配默认角色
+            await userManager.AddToRoleAsync(user, "User");
+            return Ok("User registered successfully");
+        }
+
+        foreach (var error in result.Errors)
+        {
+            ModelState.AddModelError(string.Empty, error.Description);
+        }
+
+        return BadRequest(ModelState);
+    }
+    
+    // 用户登录
+    [HttpPost("login")]
+    public async Task<IActionResult> Login([FromBody] LoginDto model)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var result = await signInManager.PasswordSignInAsync(model.UserName, model.Password, false, false);
+
+        if (result.Succeeded)
+        {
+            // 生成并返回 JWT 令牌
+            var user = await userManager.FindByNameAsync(model.UserName);
+            var identity = new ClaimsIdentity(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+            identity.AddClaim(OpenIddictConstants.Claims.Subject, user.Id.ToString());
+            identity.AddClaim(OpenIddictConstants.Claims.Name, user.UserName);
+
+            identity.SetDestinations(claim => claim.Type switch
+            {
+                OpenIddictConstants.Claims.Name or OpenIddictConstants.Claims.Subject => new[] { OpenIddictConstants.Destinations.AccessToken, OpenIddictConstants.Destinations.IdentityToken },
+                _ => new[] { OpenIddictConstants.Destinations.AccessToken }
+            });
+
+            var principal = new ClaimsPrincipal(identity);
+            principal.SetScopes(OpenIddictConstants.Scopes.OpenId, OpenIddictConstants.Scopes.Email);
+
+            return SignIn(principal, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+        }
+
+        return Unauthorized("Invalid login attempt");
+    }
+    
+    // 用户注销
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout()
+    {
+        await signInManager.SignOutAsync();
+        return Ok("User logged out successfully");
     }
 }
