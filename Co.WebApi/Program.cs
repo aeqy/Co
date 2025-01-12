@@ -1,3 +1,4 @@
+using Co.Infrastructure.Caching;
 using Co.Infrastructure.Data;
 using Co.WebApi.Extensions;
 
@@ -20,6 +21,10 @@ builder.Logging.AddConsole(); // Add Console Logging Provider
 builder.Services.AddApiServices(builder.Configuration); // Add Api Services
 
 builder.Services.AddScoped<SeedDataService>(); // Add Seed Data Service
+
+builder.Services.AddRedisCache(builder.Configuration);
+
+builder.Services.AddScoped<ICacheService, RedisCacheService>();
 
 
 var app = builder.Build();
