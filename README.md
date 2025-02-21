@@ -54,6 +54,24 @@ cd ..
 - 为每个项目安装常用 NuGet 包，例如 Swagger（API 文档）、Entity Framework Core（数据库支持）、MediatR（CQRS 模式支持）等。
 - 设置项目之间的引用关系，确保层级结构清晰。
 
+
+## 项目启动
+
+```bash
+#在 Co.Infrastructure
+
+ dotnet ef migrations add InitialCreate
+ 
+ #登陆Token接口
+ 
+  grant_type:password
+  username:admin
+  password:Admin@123
+  scope:openid
+  client_id:my-client
+  client_secret:your-client-secret
+
+```
 ---
 ## Git提交注意事项
 
