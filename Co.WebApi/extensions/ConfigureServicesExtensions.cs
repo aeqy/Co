@@ -1,3 +1,5 @@
+using Co.WebApi.extensions;
+
 namespace Co.WebApi.Extensions;
 
 public static class ConfigureServicesExtensions
@@ -6,11 +8,12 @@ public static class ConfigureServicesExtensions
     {
         services.AddControllers();
         services.AddLogging(logging => logging.AddConsole()); // 建议替换为 Serilog 或 NLog
-        
+        services.AddSwaggerDocumentation();
     }
 
     public static void Configure(this WebApplication app)
     {
+        app.UseSwaggerDocumentation();
         app.UseDefaultFiles(); // Use Default Files
         app.UseStaticFiles(); // Use Static Files
         app.UseAuthentication(); // Use Authentication

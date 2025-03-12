@@ -281,3 +281,23 @@ cp -r volumes/redis/dump.rdb ./backup/
 ---
 
 通过以上配置和指南，您可以快速部署和管理 Co 项目。如有问题，请参考 [常见问题](#常见问题) 或[提交 Issue](https://github.com/aeqy/Co.git)。
+
+---
+
+# Git 提交信息规范
+
+### 提交类型：
+
+---
+* **feat：** 添加新功能
+* **fix：** 修复 bug
+* **docs：** 仅文档更改
+* **style：** 不影响代码含义的更改
+* **refactor：** 代码重构
+* **perf：** 提高性能的代码更改
+* **test：** 添加或修正测试
+* **build：** 构建系统或依赖更改
+* **ci：** CI 配置更改
+* **chore：** 其他更改
+* **revert：** 恢复提交
+---
