@@ -1,1 +1,82 @@
-# Docker Compose配置
+x-shared: &shared-environment
+  TZ: Asia/Shanghai
+  ASPNETCORE_ENVIRONMENT: Production
+  ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+
+services:
+  co.webapi:
+    image: co.webapi
+    build:
+      context: .
+      dockerfile: Co.WebApi/Dockerfile
+    environment:
+      <<: *shared-environment
+      ASPNETCORE_URLS: http://+:80
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=co_db;Username=prod_user;Password=${DB_PASSWORD}"
+      ConnectionStrings__Redis: "redis:6379,password=${REDIS_PASSWORD}"
+    ports:
+      - target: 80
+        protocol: tcp
+    depends_on:  # 已修正为列表格式
+      - postgres
+      - redis
+    networks:
+      - co-network
+    deploy:
+      replicas: 3
+      endpoint_mode: dnsrr
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:80/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      <<: *shared-environment
+      POSTGRES_USER: prod_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: co_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prod_user -d co_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - co-network
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    environment:
+      <<: *shared-environment
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - co-network
+
+volumes:
+  pgdata:
+
+networks:
+  co-network:
+    driver: bridge

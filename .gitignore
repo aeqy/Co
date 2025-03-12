@@ -6,4 +6,6 @@ obj/
 *.user
 appsettings.Development.json
 *.db
+.env
+certs/
 
