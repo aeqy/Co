@@ -88,7 +88,7 @@ public class AuthController : ControllerBase
             return BadRequest(ModelState);
         }
         
-        var user = new IdentityUser
+        var user = new IdentityUser<Guid>
         {
             UserName = model.Email,
             Email = model.Email,

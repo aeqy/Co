@@ -12,28 +12,28 @@ public interface IIdentityService
     /// 获取所有用户
     /// </summary>
     /// <returns>用户列表</returns>
-    Task<List<IdentityUser>> GetAllUsersAsync();
+    Task<List<IdentityUser<Guid>>> GetAllUsersAsync();
 
     /// <summary>
     /// 通过ID获取用户
     /// </summary>
     /// <param name="userId">用户ID</param>
     /// <returns>用户</returns>
-    Task<IdentityUser?> GetUserByIdAsync(string userId);
+    Task<IdentityUser<Guid>?> GetUserByIdAsync(string userId);
 
     /// <summary>
     /// 通过用户名获取用户
     /// </summary>
     /// <param name="username">用户名</param>
     /// <returns>用户</returns>
-    Task<IdentityUser?> GetUserByUsernameAsync(string username);
+    Task<IdentityUser<Guid>?> GetUserByUsernameAsync(string username);
 
     /// <summary>
     /// 通过电子邮件获取用户
     /// </summary>
     /// <param name="email">电子邮件</param>
     /// <returns>用户</returns>
-    Task<IdentityUser?> GetUserByEmailAsync(string email);
+    Task<IdentityUser<Guid>?> GetUserByEmailAsync(string email);
 
     /// <summary>
     /// 创建用户
@@ -42,14 +42,14 @@ public interface IIdentityService
     /// <param name="password">密码</param>
     /// <param name="roles">角色列表</param>
     /// <returns>结果</returns>
-    Task<(bool Succeeded, string[] Errors)> CreateUserAsync(IdentityUser user, string password, List<string> roles);
+    Task<(bool Succeeded, string[] Errors)> CreateUserAsync(IdentityUser<Guid> user, string password, List<string> roles);
 
     /// <summary>
     /// 更新用户
     /// </summary>
     /// <param name="user">用户</param>
     /// <returns>结果</returns>
-    Task<(bool Succeeded, string[] Errors)> UpdateUserAsync(IdentityUser user);
+    Task<(bool Succeeded, string[] Errors)> UpdateUserAsync(IdentityUser<Guid> user);
 
     /// <summary>
     /// 更新用户角色
@@ -70,7 +70,7 @@ public interface IIdentityService
     /// 获取所有角色
     /// </summary>
     /// <returns>角色列表</returns>
-    Task<List<IdentityRole>> GetAllRolesAsync();
+    Task<List<IdentityRole<Guid>>> GetAllRolesAsync();
 
     /// <summary>
     /// 获取用户的所有角色
@@ -84,7 +84,7 @@ public interface IIdentityService
     /// </summary>
     /// <param name="role">角色</param>
     /// <returns>结果</returns>
-    Task<(bool Succeeded, string[] Errors)> CreateRoleAsync(IdentityRole role);
+    Task<(bool Succeeded, string[] Errors)> CreateRoleAsync(IdentityRole<Guid> role);
 
     /// <summary>
     /// 删除角色

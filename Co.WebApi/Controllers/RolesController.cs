@@ -45,7 +45,7 @@ public class RolesController : ControllerBase
     /// <returns>创建结果</returns>
     [HttpPost]
     [Authorize(Roles = "SuperAdmin")]
-    public async Task<IActionResult> CreateRole(IdentityRole role)
+    public async Task<IActionResult> CreateRole(IdentityRole<Guid> role)
     {
         if (!ModelState.IsValid)
         {
