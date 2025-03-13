@@ -422,7 +422,42 @@ public class IdentityService : IIdentityService
             if (user == null)
                 return new List<Claim>();
 
-            return (await _userManager.GetClaimsAsync(user)).ToList();
+            // 获取用户基本声明
+            var claims = (await _userManager.GetClaimsAsync(user)).ToList();
+            
+            // 获取用户角色并添加到声明中
+            var roles = await _userManager.GetRolesAsync(user);
+            foreach (var role in roles)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, role));
+                // 同时添加OpenIddict标准格式的角色声明
+                claims.Add(new Claim("role", role));
+                claims.Add(new Claim("roles", role));
+                claims.Add(new Claim("http://schemas.microsoft.com/ws/2008/06/identity/claims/role", role));
+                
+                // OpenIddict特定格式
+                claims.Add(new Claim(OpenIddict.Abstractions.OpenIddictConstants.Claims.Role, role));
+            }
+            
+            // 添加用户ID和用户名基本声明
+            claims.Add(new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()));
+            claims.Add(new Claim(ClaimTypes.Name, user.UserName));
+            
+            
+            // 增加兼容性 - 使用OpenIddict标准格式添加主要声明
+            claims.Add(new Claim(OpenIddict.Abstractions.OpenIddictConstants.Claims.Subject, user.Id.ToString()));
+            claims.Add(new Claim(OpenIddict.Abstractions.OpenIddictConstants.Claims.Name, user.UserName));
+            
+            if (!string.IsNullOrEmpty(user.Email))
+            {
+                claims.Add(new Claim(ClaimTypes.Email, user.Email));
+                claims.Add(new Claim(OpenIddict.Abstractions.OpenIddictConstants.Claims.Email, user.Email));
+            }
+            
+            _logger.LogInformation("为用户 {UserId} 获取声明，包含 {ClaimCount} 个声明，角色: {Roles}", 
+                userId, claims.Count, string.Join(", ", roles));
+            
+            return claims;
         }
         catch (Exception ex)
         {

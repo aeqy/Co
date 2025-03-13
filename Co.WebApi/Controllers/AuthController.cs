@@ -217,9 +217,11 @@ public class AuthController : ControllerBase
         try
         {
             // 获取当前用户ID
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var userId = User.FindFirstValue(OpenIddictConstants.Claims.Subject) ??
+                         User.FindFirstValue(ClaimTypes.NameIdentifier);
             if (string.IsNullOrEmpty(userId))
             {
+                _logger.LogWarning("无法从令牌中提取用户ID");
                 return Unauthorized(new { error = "invalid_token", error_description = "令牌无效或已过期" });
             }
 
@@ -330,66 +332,105 @@ public class AuthController : ControllerBase
     private async Task<IActionResult> CreateAuthenticationTicketAsync(IdentityUser<Guid> user,
         ImmutableArray<string> scopes)
     {
-        // 获取用户Claims
-        var claims = await _identityService.GetUserClaimsAsync(user.Id.ToString());
-
-        // 确保包含 subject claim - 这是 OpenIddict 强制要求的
-        if (!claims.Any(c => c.Type == OpenIddictConstants.Claims.Subject))
+        try
         {
-            claims.Add(new Claim(OpenIddictConstants.Claims.Subject, user.Id.ToString()));
+            _logger.LogInformation("开始为用户 {UserId} 创建认证票据", user.Id);
+            // 获取用户Claims
+            var claims = await _identityService.GetUserClaimsAsync(user.Id.ToString());
+
+            _logger.LogInformation("获取到用户 {UserId} 的声明 {ClaimsCount} 个", user.Id, claims.Count);
+
+            foreach (var claim in claims)
+            {
+                _logger.LogInformation("用户 {UserId} 声明: {ClaimType} = {ClaimValue}",
+                    user.Id, claim.Type, claim.Value);
+            }
+
+            // 确保包含 subject claim - 这是 OpenIddict 强制要求的
+            if (!claims.Any(c => c.Type == OpenIddictConstants.Claims.Subject))
+            {
+                _logger.LogInformation("为用户 {UserId} 添加缺失的Subject声明", user.Id);
+                claims.Add(new Claim(OpenIddictConstants.Claims.Subject, user.Id.ToString()));
+            }
+
+            // 获取用户角色并添加到claims中
+            var roles = await _userManager.GetRolesAsync(user);
+            _logger.LogInformation("用户 {UserId} 拥有的角色: {Roles}",
+                user.Id, string.Join(", ", roles));
+
+            foreach (var role in roles)
+            {
+                _logger.LogInformation("为用户 {UserId} 添加角色声明: {Role}", user.Id, role);
+                claims.Add(new Claim(ClaimTypes.Role, role));
+                // 同时添加OpenIddict标准格式的角色声明
+                claims.Add(new Claim("role", role));
+                // 再添加一种可能的格式
+                claims.Add(new Claim(OpenIddictConstants.Claims.Role, role));
+            }
+
+            // 添加 scopes 到 claims
+            foreach (var scope in scopes)
+            {
+                _logger.LogInformation("为用户 {UserId} 添加Scope声明: {Scope}", user.Id, scope);
+                claims.Add(new Claim(OpenIddictConstants.Claims.Scope, scope));
+            }
+
+            // 创建Claims身份
+            var identity = new ClaimsIdentity(
+                claims,
+                OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
+                ClaimTypes.Name,
+                ClaimTypes.Role);
+
+            _logger.LogInformation("为用户 {UserId} 创建的ClaimsIdentity使用名称类型: {NameType}，角色类型: {RoleType}",
+                user.Id, identity.NameClaimType, identity.RoleClaimType);
+
+            // 创建Claims主体
+            var principal = new ClaimsPrincipal(identity);
+
+
+            // 设置额外声明资源
+            principal.SetResources("api");
+            _logger.LogInformation("为用户 {UserId} 设置资源: api", user.Id);
+
+            // 生成刷新令牌
+            if (scopes.Contains(OpenIddictConstants.Scopes.OfflineAccess))
+            {
+                var refreshToken = Guid.NewGuid().ToString();
+                var refreshTokenExpiryTime = DateTime.UtcNow.AddDays(30);
+
+                _logger.LogInformation("为用户 {UserId} 生成刷新令牌，过期时间: {ExpiryTime}",
+                    user.Id, refreshTokenExpiryTime);
+
+                // 存储刷新令牌
+                await _identityService.UpdateUserRefreshTokenAsync(user.Id.ToString(), refreshToken,
+                    refreshTokenExpiryTime);
+
+                // 设置刷新令牌
+                principal.SetRefreshTokenLifetime(TimeSpan.FromDays(30));
+            }
+
+            // 签发令牌
+            var ticket = new AuthenticationTicket(
+                principal,
+                new AuthenticationProperties(),
+                OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+
+            // 设置过期时间
+            ticket.Properties.ExpiresUtc = DateTimeOffset.UtcNow.AddHours(1);
+            _logger.LogInformation("为用户 {UserId} 的认证票据设置过期时间: {ExpiryTime}",
+                user.Id, ticket.Properties.ExpiresUtc);
+
+            // 返回认证结果
+            _logger.LogInformation("成功完成用户 {UserId} 的认证票据创建", user.Id);
+            return SignIn(ticket.Principal, ticket.Properties, ticket.AuthenticationScheme);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "创建认证票据时发生错误: {ErrorMessage}", ex.Message);
+            throw;
         }
 
-        // 添加 scopes 到 claims
-        foreach (var scope in scopes)
-        {
-            claims.Add(new Claim(OpenIddictConstants.Claims.Scope, scope));
-        }
-
-        // 创建Claims身份
-        var identity = new ClaimsIdentity(
-            claims,
-            OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
-            ClaimTypes.Name,
-            ClaimTypes.Role);
-
-        // 创建Claims主体
-        var principal = new ClaimsPrincipal(identity);
-
-        // // 设置范围
-        // foreach (var scope in scopes)
-        // {
-        //     principal.SetScope(scope);
-        // }
-
-        // 设置额外声明资源
-        principal.SetResources("api");
-
-        // 生成刷新令牌
-        if (scopes.Contains(OpenIddictConstants.Scopes.OfflineAccess))
-        {
-            var refreshToken = Guid.NewGuid().ToString();
-            var refreshTokenExpiryTime = DateTime.UtcNow.AddDays(30);
-
-            // 存储刷新令牌
-            await _identityService.UpdateUserRefreshTokenAsync(user.Id.ToString(), refreshToken,
-                refreshTokenExpiryTime);
-
-            // 设置刷新令牌
-            principal.SetRefreshTokenLifetime(TimeSpan.FromDays(30));
-        }
-
-        // 签发令牌
-        var ticket = new AuthenticationTicket(
-            principal,
-            new AuthenticationProperties(),
-            OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-
-        // 设置过期时间
-        ticket.Properties.ExpiresUtc = DateTimeOffset.UtcNow.AddHours(1);
-
-        // 返回认证结果
-        return SignIn(ticket.Principal, ticket.Properties, ticket.AuthenticationScheme);
+        #endregion
     }
-
-    #endregion
 }

@@ -42,14 +42,6 @@ public static class IdentityServicesExtensions
             })
             .AddEntityFrameworkStores<CoDbContext>()
             .AddDefaultTokenProviders();
-        
-        // 添加认证
-        services.AddAuthentication(options =>
-            {
-                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-                options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
-            });
             
         // 配置OpenIddict
         services.ConfigureOpenIddict(configuration);

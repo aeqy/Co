@@ -1,4 +1,6 @@
+using System.Security.Claims;
 using Co.Infrastructure.Data;
+using Microsoft.IdentityModel.Tokens;
 
 namespace Co.WebApi.extensions;
 
@@ -50,8 +52,14 @@ public static class OpenIddictConfiguration
                 
                 // 配置令牌
                 options.SetAccessTokenLifetime(TimeSpan.FromMinutes(accessTokenExpiration))
-                      .SetRefreshTokenLifetime(TimeSpan.FromMinutes(refreshTokenExpiration))
-                      .SetRefreshTokenReuseLeeway(TimeSpan.FromSeconds(60));
+                    .SetRefreshTokenLifetime(TimeSpan.FromMinutes(refreshTokenExpiration))
+                    .SetRefreshTokenReuseLeeway(TimeSpan.FromSeconds(60));
+
+                // 注册标准范围
+                options.RegisterScopes("api", "offline_access");
+
+                // 允许所有声明进入令牌中
+                options.DisableAccessTokenEncryption();
             })
             
             // 注册OpenIddict验证组件
@@ -64,9 +72,23 @@ public static class OpenIddictConfiguration
                 options.UseAspNetCore();
                 
                 // 设置验证资源
-                options.SetIssuer(new Uri("https://localhost:7028"));
-                options.Configure(opt => opt.TokenValidationParameters.ValidateAudience = false);
+                options.SetIssuer("https://localhost:7028");
+
+                // 启用所有认证方案
+                options.AddAudiences("api");
+
+                // 声明角色映射 - 这是在身份识别服务中处理的，不需要在此处重复设置
+
+                // 设置资源验证器
+                options.EnableAuthorizationEntryValidation();
             });
+
+        // 添加授权策略
+        services.AddAuthorization(options =>
+        {
+            options.AddPolicy("RequireAdminRole", policy => policy.RequireRole("Admin"));
+            options.AddPolicy("RequireSuperAdminRole", policy => policy.RequireRole("SuperAdmin"));
+        });
 
         return services;
     }
