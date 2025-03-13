@@ -62,6 +62,10 @@ public static class OpenIddictConfiguration
                 
                 // 注册ASP.NET Core主机
                 options.UseAspNetCore();
+                
+                // 设置验证资源
+                options.SetIssuer(new Uri("https://localhost:7028"));
+                options.Configure(opt => opt.TokenValidationParameters.ValidateAudience = false);
             });
 
         return services;

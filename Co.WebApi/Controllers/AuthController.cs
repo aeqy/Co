@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
+using OpenIddict.Validation.AspNetCore;
 
 
 namespace Co.WebApi.Controllers;
@@ -21,8 +22,8 @@ namespace Co.WebApi.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IIdentityService _identityService;
-    private readonly UserManager<IdentityUser> _userManager;
-    private readonly SignInManager<IdentityUser> _signInManager;
+    private readonly UserManager<IdentityUser<Guid>> _userManager;
+    private readonly SignInManager<IdentityUser<Guid>> _signInManager;
     private readonly IOpenIddictApplicationManager _applicationManager;
     private readonly IOpenIddictAuthorizationManager _authorizationManager;
     private readonly IOpenIddictScopeManager _scopeManager;
@@ -33,8 +34,8 @@ public class AuthController : ControllerBase
     /// </summary>
     public AuthController(
         IIdentityService identityService,
-        UserManager<IdentityUser> userManager,
-        SignInManager<IdentityUser> signInManager,
+        UserManager<IdentityUser<Guid>> userManager,
+        SignInManager<IdentityUser<Guid>> signInManager,
         IOpenIddictApplicationManager applicationManager,
         IOpenIddictAuthorizationManager authorizationManager,
         IOpenIddictScopeManager scopeManager,
@@ -59,13 +60,13 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Token()
     {
         var request = HttpContext.GetOpenIddictServerRequest() ??
-            throw new InvalidOperationException("OpenID Connect请求不能为空");
+                      throw new InvalidOperationException("OpenID Connect请求不能为空");
 
         if (request.IsPasswordGrantType())
         {
             return await HandlePasswordGrantTypeAsync(request);
         }
-        
+
         if (request.IsRefreshTokenGrantType())
         {
             return await HandleRefreshTokenGrantTypeAsync(request);
@@ -73,7 +74,7 @@ public class AuthController : ControllerBase
 
         throw new InvalidOperationException($"不支持的授权类型: {request.GrantType}");
     }
-    
+
     /// <summary>
     /// 注册用户
     /// </summary>
@@ -87,7 +88,7 @@ public class AuthController : ControllerBase
         {
             return BadRequest(ModelState);
         }
-        
+
         var user = new IdentityUser<Guid>
         {
             UserName = model.Email,
@@ -98,108 +99,144 @@ public class AuthController : ControllerBase
             EmailConfirmed = true, // 在生产环境中，应通过邮件确认
             PhoneNumberConfirmed = true // 在生产环境中，应通过短信确认
         };
-        
+
         var result = await _identityService.CreateUserAsync(user, model.Password, new List<string> { "User" });
-        
+
         if (!result.Succeeded)
         {
             foreach (var error in result.Errors)
             {
                 ModelState.AddModelError(string.Empty, error);
             }
-            
+
             return BadRequest(ModelState);
         }
-        
+
         _logger.LogInformation("用户 {Email} 注册成功", model.Email);
         return Ok(new { message = "注册成功" });
     }
-    
+
     /// <summary>
     /// 获取当前用户信息
     /// </summary>
     /// <returns>用户信息</returns>
     [HttpGet("userinfo")]
-    [Authorize(AuthenticationSchemes = OpenIddictServerAspNetCoreDefaults.AuthenticationScheme)]
+    [Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
     public async Task<IActionResult> Userinfo()
     {
-        var user = await _userManager.GetUserAsync(User);
+        // 添加调试日志
+        _logger.LogInformation("User Claims: {Claims}",
+            string.Join(", ", User.Claims.Select(c => $"{c.Type}: {c.Value}")));
+        _logger.LogInformation("User Identity IsAuthenticated: {IsAuthenticated}", User.Identity?.IsAuthenticated);
+
+        // 直接从声明中获取用户ID
+        var userId = User.FindFirstValue(OpenIddictConstants.Claims.Subject) ??
+                     User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (string.IsNullOrEmpty(userId))
+        {
+            _logger.LogWarning("无法从令牌中提取用户ID");
+            return Unauthorized(new { error = "invalid_token", error_description = "提供的令牌无效" });
+        }
+
+        // 通过ID查找用户
+        var user = await _userManager.FindByIdAsync(userId);
         if (user == null)
         {
-            return Challenge(
-                authenticationSchemes: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
-                properties: new AuthenticationProperties(new Dictionary<string, string>
-                {
-                    [OpenIddictServerAspNetCoreConstants.Properties.Error] = OpenIddictConstants.Errors.InvalidToken,
-                    [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription] = "提供的令牌无效"
-                }));
+            _logger.LogWarning("找不到与Token关联的用户，用户ID: {UserId}", userId);
+            return Unauthorized(new { error = "invalid_token", error_description = "提供的令牌无效" });
         }
-        
+
         var claims = new Dictionary<string, object>();
+
+        // 检查令牌的scope声明
+        var hasScopes = User.Claims.Any(c => c.Type == OpenIddictConstants.Claims.Scope);
+        _logger.LogInformation("Token has scopes: {HasScopes}", hasScopes);
         
-        // 只返回请求的声明
-        if (User.HasScope(OpenIddictConstants.Scopes.OpenId))
+        // 始终包含用户ID
+        claims[OpenIddictConstants.Claims.Subject] = user.Id.ToString();
+        
+        // 始终包含基本用户信息
+        claims[OpenIddictConstants.Claims.PreferredUsername] = user.UserName;
+        
+        // 根据声明确定返回的信息
+        if (hasScopes && User.HasScope(OpenIddictConstants.Scopes.OpenId))
         {
-            claims[OpenIddictConstants.Claims.Subject] = await _userManager.GetUserIdAsync(user);
+            // OpenID已包含在基本信息中，无需额外操作
         }
-        
-        if (User.HasScope(OpenIddictConstants.Scopes.Profile))
+
+        if (hasScopes && User.HasScope(OpenIddictConstants.Scopes.Profile))
         {
             // claims[OpenIddictConstants.Claims.Name] = user.FullName;
             // claims[OpenIddictConstants.Claims.FamilyName] = user.LastName;
             // claims[OpenIddictConstants.Claims.GivenName] = user.FirstName;
-            claims[OpenIddictConstants.Claims.PreferredUsername] = user.UserName;
+            // claims[OpenIddictConstants.Claims.PreferredUsername] = user.UserName;
             // claims[OpenIddictConstants.Claims.UpdatedAt] = user.UpdatedAt?.ToUnixTimeSeconds() ?? user.CreatedAt.ToUnixTimeSeconds();
         }
-        
-        if (User.HasScope(OpenIddictConstants.Scopes.Email))
+
+        if (hasScopes && User.HasScope(OpenIddictConstants.Scopes.Email))
         {
             claims[OpenIddictConstants.Claims.Email] = user.Email;
             claims[OpenIddictConstants.Claims.EmailVerified] = user.EmailConfirmed;
+        } else 
+        {
+            // 始终返回邮箱信息
+            claims[OpenIddictConstants.Claims.Email] = user.Email;
+            claims[OpenIddictConstants.Claims.EmailVerified] = user.EmailConfirmed;
         }
-        
-        if (User.HasScope(OpenIddictConstants.Scopes.Phone))
+
+        if (hasScopes && User.HasScope(OpenIddictConstants.Scopes.Phone))
         {
             claims[OpenIddictConstants.Claims.PhoneNumber] = user.PhoneNumber;
             claims[OpenIddictConstants.Claims.PhoneNumberVerified] = user.PhoneNumberConfirmed;
-        }
-        
-        if (User.HasScope("roles"))
+        } else if (user.PhoneNumber != null)
         {
-            claims["roles"] = await _userManager.GetRolesAsync(user);
+            // 如果有电话号码，始终返回
+            claims[OpenIddictConstants.Claims.PhoneNumber] = user.PhoneNumber;
+            claims[OpenIddictConstants.Claims.PhoneNumberVerified] = user.PhoneNumberConfirmed;
         }
-        
+
+        // 获取用户角色
+        var roles = await _userManager.GetRolesAsync(user);
+        if (roles != null && roles.Any())
+        {
+            claims["roles"] = roles;
+        }
+
         return Ok(claims);
     }
-    
+
     /// <summary>
     /// 吊销Token
     /// </summary>
     /// <returns>吊销结果</returns>
     [HttpPost("revoke")]
-    [Authorize(AuthenticationSchemes = OpenIddictServerAspNetCoreDefaults.AuthenticationScheme)]
+    [Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
     public async Task<IActionResult> Revoke()
     {
-        var request = HttpContext.GetOpenIddictServerRequest() ??
-            throw new InvalidOperationException("OpenID Connect请求不能为空");
-
-        // 获取指定的令牌
-        var token = request.Token ?? 
-            throw new InvalidOperationException("令牌不能为空");
-
-        // 如果刷新令牌，则在用户数据库中将其设为null
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!string.IsNullOrEmpty(userId))
+        try
         {
-            await _identityService.UpdateUserRefreshTokenAsync(userId, null!, DateTime.UtcNow);
-        }
+            // 获取当前用户ID
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized(new { error = "invalid_token", error_description = "令牌无效或已过期" });
+            }
 
-        // 让OpenIddict处理吊销逻辑
-        return Ok();
+            // 更新用户刷新令牌为null
+            await _identityService.UpdateUserRefreshTokenAsync(userId, null!, DateTime.UtcNow);
+
+            return Ok(new { message = "令牌已成功吊销" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "吊销令牌时发生错误");
+            return StatusCode(500, new { error = "server_error", error_description = "吊销令牌时发生错误" });
+        }
     }
-    
+
     #region 私有方法
-    
+
     /// <summary>
     /// 处理密码授权类型
     /// </summary>
@@ -222,13 +259,13 @@ public class AuthController : ControllerBase
                 _logger.LogWarning("用户账户被锁定，用户名: {Username}", request.Username);
                 return Unauthorized(new { error = "invalid_grant", error_description = "账户被锁定，请稍后再试" });
             }
-            
+
             if (result.IsNotAllowed)
             {
                 _logger.LogWarning("用户不允许登录，用户名: {Username}", request.Username);
                 return Unauthorized(new { error = "invalid_grant", error_description = "账户未激活，请联系管理员" });
             }
-            
+
             _logger.LogWarning("用户名或密码错误，用户名: {Username}", request.Username);
             return Unauthorized(new { error = "invalid_grant", error_description = "用户名或密码错误" });
         }
@@ -241,7 +278,7 @@ public class AuthController : ControllerBase
         // 创建新的认证票据
         return await CreateAuthenticationTicketAsync(user, request.GetScopes());
     }
-    
+
     /// <summary>
     /// 处理刷新令牌授权类型
     /// </summary>
@@ -286,21 +323,28 @@ public class AuthController : ControllerBase
         // 创建新的认证票据
         return await CreateAuthenticationTicketAsync(user, request.GetScopes());
     }
-    
+
     /// <summary>
     /// 创建认证票据
     /// </summary>
-    private async Task<IActionResult> CreateAuthenticationTicketAsync(IdentityUser user, ImmutableArray<string> scopes)
+    private async Task<IActionResult> CreateAuthenticationTicketAsync(IdentityUser<Guid> user,
+        ImmutableArray<string> scopes)
     {
         // 获取用户Claims
-        var claims = await _identityService.GetUserClaimsAsync(user.Id);
-        
+        var claims = await _identityService.GetUserClaimsAsync(user.Id.ToString());
+
+        // 确保包含 subject claim - 这是 OpenIddict 强制要求的
+        if (!claims.Any(c => c.Type == OpenIddictConstants.Claims.Subject))
+        {
+            claims.Add(new Claim(OpenIddictConstants.Claims.Subject, user.Id.ToString()));
+        }
+
         // 添加 scopes 到 claims
         foreach (var scope in scopes)
         {
             claims.Add(new Claim(OpenIddictConstants.Claims.Scope, scope));
         }
-        
+
         // 创建Claims身份
         var identity = new ClaimsIdentity(
             claims,
@@ -310,41 +354,42 @@ public class AuthController : ControllerBase
 
         // 创建Claims主体
         var principal = new ClaimsPrincipal(identity);
-        
+
         // // 设置范围
         // foreach (var scope in scopes)
         // {
         //     principal.SetScope(scope);
         // }
-        
+
         // 设置额外声明资源
         principal.SetResources("api");
-        
+
         // 生成刷新令牌
         if (scopes.Contains(OpenIddictConstants.Scopes.OfflineAccess))
         {
             var refreshToken = Guid.NewGuid().ToString();
             var refreshTokenExpiryTime = DateTime.UtcNow.AddDays(30);
-            
+
             // 存储刷新令牌
-            await _identityService.UpdateUserRefreshTokenAsync(user.Id, refreshToken, refreshTokenExpiryTime);
-            
+            await _identityService.UpdateUserRefreshTokenAsync(user.Id.ToString(), refreshToken,
+                refreshTokenExpiryTime);
+
             // 设置刷新令牌
             principal.SetRefreshTokenLifetime(TimeSpan.FromDays(30));
         }
-        
+
         // 签发令牌
         var ticket = new AuthenticationTicket(
             principal,
             new AuthenticationProperties(),
             OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-        
+
         // 设置过期时间
         ticket.Properties.ExpiresUtc = DateTimeOffset.UtcNow.AddHours(1);
-        
+
         // 返回认证结果
         return SignIn(ticket.Principal, ticket.Properties, ticket.AuthenticationScheme);
     }
-    
+
     #endregion
 }

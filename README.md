@@ -20,7 +20,19 @@ Clean Architecture
 - **co.webapi**：基于 ASP.NET Core 的 Web API 服务
 - **postgres**：PostgreSQL 数据库服务
 - **redis**：Redis 缓存服务
+---
+- **Token接口** 
+```json
 
+{
+	"grant_type": "password",
+	"client_id": "password-client",
+	"client_secret": "password-client-secret",
+	"username": "admin",
+	"password": "YourAdminPassword",
+	"scope": "api offline_access"
+}
+```
 ---
 
 ## 环境要求
