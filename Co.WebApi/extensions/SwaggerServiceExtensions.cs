@@ -34,31 +34,31 @@ public static class SwaggerServiceExtensions
                 c.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFilename));
 
                 // 添加安全定义（如果需要）
-                // c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-                // {
-                //     Description = "JWT Authorization header using the Bearer scheme.",
-                //     Name = "Authorization",
-                //     In = ParameterLocation.Header,
-                //     Type = SecuritySchemeType.Http,
-                //     Scheme = "bearer",
-                //     BearerFormat = "JWT"
-                // });
+                c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+                {
+                    Description = "JWT Authorization header using the Bearer scheme.",
+                    Name = "Authorization",
+                    In = ParameterLocation.Header,
+                    Type = SecuritySchemeType.Http,
+                    Scheme = "bearer",
+                    BearerFormat = "JWT"
+                });
 
                 // 添加安全要求（如果需要）
-                // c.AddSecurityRequirement(new OpenApiSecurityRequirement
-                // {
-                //     {
-                //         new OpenApiSecurityScheme
-                //         {
-                //             Reference = new OpenApiReference
-                //             {
-                //                 Type = ReferenceType.SecurityScheme,
-                //                 Id = "Bearer"
-                //             }
-                //         },
-                //         new string[] {}
-                //     }
-                // });
+                c.AddSecurityRequirement(new OpenApiSecurityRequirement
+                {
+                    {
+                        new OpenApiSecurityScheme
+                        {
+                            Reference = new OpenApiReference
+                            {
+                                Type = ReferenceType.SecurityScheme,
+                                Id = "Bearer"
+                            }
+                        },
+                        new string[] {}
+                    }
+                });
 
                 c.UseOneOfForPolymorphism();
                 c.OrderActionsBy((apiDesc) =>

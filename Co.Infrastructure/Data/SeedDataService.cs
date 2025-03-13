@@ -48,7 +48,7 @@ public class SeedDataService(
 
     private async Task SeedRolesAsync()
     {
-        string[] roles = { "Admin", "User", "Manager" };
+        string[] roles = { "SuperAdmin", "Admin", "User", "Manager" };
 
         foreach (var role in roles)
         {
@@ -71,6 +71,13 @@ public class SeedDataService(
     private async Task SeedUsersAsync()
     {
         await CreateUserIfNotExistsAsync(
+            "superadmin",
+            "superadmin@example.com",
+            configuration["SeedData:SuperAdminPassword"] ?? "SuperAdmin@123",
+            new[] { "SuperAdmin" }
+        );
+        
+        await CreateUserIfNotExistsAsync(
             "admin",
             "admin@example.com",
             configuration["SeedData:AdminPassword"] ?? "Admin@123",
@@ -89,6 +96,14 @@ public class SeedDataService(
             "manager@example.com",
             configuration["SeedData:ManagerPassword"] ?? "Manager@123",
             new[] { "Manager" }
+        );
+        
+        // 创建一个测试用户，拥有所有角色
+        await CreateUserIfNotExistsAsync(
+            "test",
+            "test@example.com",
+            configuration["SeedData:TestUserPassword"] ?? "Test@123",
+            new[] { "SuperAdmin", "Admin", "User", "Manager" }
         );
     }
 

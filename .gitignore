@@ -7,5 +7,7 @@ obj/
 appsettings.Development.json
 *.db
 .env
+Migrations/
 certs/
+.DS_Store
 

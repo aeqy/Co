@@ -18,6 +18,18 @@ public static class ConfigureServicesExtensions
         // 添加Identity和认证服务
         services.AddIdentityServices(configuration);
         
+        // 添加授权策略
+        services.AddAuthorization(options =>
+        {
+            // 需要Admin或SuperAdmin角色
+            options.AddPolicy("RequireAdminRole", policy =>
+                policy.RequireRole("Admin", "SuperAdmin"));
+                
+            // 仅需要SuperAdmin角色
+            options.AddPolicy("RequireSuperAdminRole", policy =>
+                policy.RequireRole("SuperAdmin"));
+        });
+        
         // 添加Redis缓存服务
         services.AddRedisCacheServices(configuration);
 
